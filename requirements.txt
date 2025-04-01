@@ -5,3 +5,4 @@ pillow
 opencv-python-headless
 easyocr
 matplotlib
+bs4
