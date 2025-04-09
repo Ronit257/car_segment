@@ -72,6 +72,32 @@ st.markdown("""
         padding: 1rem;
         margin-bottom: 1rem;
     }
+    .processing-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .step {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .step-number {
+        background-color: #2563EB;
+        color: white;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+    }
+    .step-complete {
+        color: #16A34A;
+        font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -198,9 +224,46 @@ def strict_split_number_plate(number_plate):
     
     return part1, part2, part3, part4
 
-# Get vehicle details
-def get_vehicle_details(plate_number):
-    with st.spinner("Looking up vehicle details..."):
+# New function: Get vehicle details using RapidAPI (Paid Service)
+def get_vehicle_details_paid(plate_number):
+    with st.spinner("Looking up vehicle details via Paid Service..."):
+        try:
+            url = "https://rto-vehicle-information-india.p.rapidapi.com/getVehicleInfo"
+            
+            payload = {
+                "vehicle_no": plate_number,
+                "consent": "Y",
+                "consent_text": "I hereby give my consent for Eccentric Labs API to fetch my information"
+            }
+            
+            headers = {
+                "x-rapidapi-key": "83ed10f183mshe1c3f0fe8025d7ap1f9c9bjsn0d1e4be443fc",
+                "x-rapidapi-host": "rto-vehicle-information-india.p.rapidapi.com",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(url, json=payload, headers=headers)
+            
+            if response.status_code != 200:
+                st.warning(f"Failed to retrieve vehicle details (Status code: {response.status_code})")
+                return None
+            
+            data = response.json()
+            
+            # Check if the API returned valid data
+            if data.get("status") and data.get("data"):
+                return data["data"]
+            else:
+                st.warning("No valid data returned from API")
+                return None
+                
+        except Exception as e:
+            st.error(f"Error retrieving vehicle details from API: {str(e)}")
+            return None
+
+# Free service function for web scraping (default method)
+def get_vehicle_details_free(plate_number):
+    with st.spinner("Looking up vehicle details via Free Service..."):
         try:
             url = f"https://www.carinfo.app/rto-vehicle-registration-detail/rto-details/{plate_number}"
             
@@ -235,13 +298,14 @@ def get_vehicle_details(plate_number):
                     website = subtitles[4].find('a')['href']
                 
                 return {
-                    "Make & Model": make_model,
-                    "Owner Name": owner_name,
-                    "RTO Number": rto_number,
-                    "RTO Address": rto_address,
-                    "State": state,
-                    "RTO Phone": phone,
-                    "Website": website
+                    "maker_model": make_model,
+                    "owner_name": owner_name,
+                    "registration_no": plate_number,
+                    "registration_authority": rto_number,
+                    "rto_address": rto_address,
+                    "state": state,
+                    "rto_phone": phone,
+                    "website": website
                 }
             except (AttributeError, IndexError) as e:
                 st.warning(f"Could not parse vehicle details: {str(e)}")
@@ -251,15 +315,109 @@ def get_vehicle_details(plate_number):
             st.error(f"Error retrieving vehicle details: {str(e)}")
             return None
 
+# Display vehicle details helper function
+def display_vehicle_details(vehicle_data):
+    if vehicle_data:
+        # Create two columns for details display
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("<h3>Vehicle Information</h3>", unsafe_allow_html=True)
+            
+            # Basic vehicle info
+            if "maker_model" in vehicle_data:
+                st.write(f"**Make & Model:** {vehicle_data['maker_model']}")
+            elif "manufacturer" in vehicle_data and "vehicle_model" in vehicle_data:
+                st.write(f"**Make & Model:** {vehicle_data.get('manufacturer', '')} {vehicle_data.get('vehicle_model', '')}")
+            
+            st.write(f"**Owner Name:** {vehicle_data.get('owner_name', 'N/A')}")
+            st.write(f"**Registration No:** {vehicle_data.get('registration_no', 'N/A')}")
+            st.write(f"**Registration Date:** {vehicle_data.get('registration_date', 'N/A')}")
+            
+            # Additional vehicle specs
+            st.write(f"**Vehicle Class:** {vehicle_data.get('vehicle_class', 'N/A')}")
+            st.write(f"**Fuel Type:** {vehicle_data.get('fuel_type', 'N/A')}")
+            st.write(f"**Fuel Norms:** {vehicle_data.get('fuel_norms', 'N/A')}")
+            st.write(f"**Vehicle Type:** {vehicle_data.get('vehicle_type', 'N/A').replace('_', ' ').title() if vehicle_data.get('vehicle_type') else 'N/A'}")
+            
+            if "seat_capacity" in vehicle_data and vehicle_data["seat_capacity"]:
+                st.write(f"**Seat Capacity:** {vehicle_data['seat_capacity']}")
+            
+            if "vehicle_color" in vehicle_data and vehicle_data["vehicle_color"]:
+                st.write(f"**Vehicle Color:** {vehicle_data['vehicle_color']}")
+            
+            if "body_type_desc" in vehicle_data and vehicle_data["body_type_desc"]:
+                st.write(f"**Body Type:** {vehicle_data['body_type_desc']}")
+            
+            if "manufacture_month_year" in vehicle_data and vehicle_data["manufacture_month_year"]:
+                st.write(f"**Manufacture Year:** {vehicle_data['manufacture_month_year']}")
+            
+            if "rc_status" in vehicle_data:
+                st.write(f"**RC Status:** {vehicle_data['rc_status']}")
+            
+            if "ownership" in vehicle_data or "ownership_desc" in vehicle_data:
+                ownership = vehicle_data.get("ownership_desc", "") or f"{vehicle_data.get('ownership', '')} OWNER"
+                st.write(f"**Ownership:** {ownership}")
+            
+        with col2:
+            st.markdown("<h3>Additional Details</h3>", unsafe_allow_html=True)
+            
+            # RTO information
+            st.write(f"**RTO:** {vehicle_data.get('registration_authority', 'N/A')}")
+            
+            if "rto_address" in vehicle_data:
+                st.write(f"**RTO Address:** {vehicle_data['rto_address']}")
+            
+            if "state" in vehicle_data:
+                st.write(f"**State:** {vehicle_data['state']}")
+            
+            if "rto_phone" in vehicle_data:
+                st.write(f"**RTO Phone:** {vehicle_data['rto_phone']}")
+            
+            # Vehicle numbers
+            st.write(f"**Engine No:** {vehicle_data.get('engine_no', 'N/A')}")
+            st.write(f"**Chassis No:** {vehicle_data.get('chassis_no', 'N/A')}")
+            
+            # Insurance and other dates
+            st.write(f"**Insurance Company:** {vehicle_data.get('insurance_company', 'N/A')}")
+            st.write(f"**Insurance Valid Until:** {vehicle_data.get('insurance_upto', 'N/A')}")
+            
+            if "financier_name" in vehicle_data:
+                st.write(f"**Financier:** {vehicle_data['financier_name']}")
+            
+            if "fitness_upto" in vehicle_data:
+                st.write(f"**Fitness Valid Until:** {vehicle_data['fitness_upto']}")
+            
+            if "puc_upto" in vehicle_data:
+                st.write(f"**PUC Valid Until:** {vehicle_data['puc_upto']}")
+            
+            if "road_tax_paid_upto" in vehicle_data:
+                st.write(f"**Road Tax Paid Until:** {vehicle_data['road_tax_paid_upto']}")
+            
+            if "website" in vehicle_data:
+                st.write(f"**Website:** {vehicle_data['website']}")
+            
+        return True
+    else:
+        st.error("Could not retrieve vehicle details.")
+        return False
+
 # Sidebar content
 st.sidebar.title("🚗 Car Analysis")
 st.sidebar.markdown("---")
 
-# Add mode selection to sidebar
+# Add mode selection to sidebar (renamed as requested)
 app_mode = st.sidebar.radio(
     "Select Mode:",
-    ["Car Classification & License Plate", "Car Classification Only"]
+    ["Car Classification & License Plate", "Car Classification Only", "License Plate Vehicle Details"]
 )
+
+# Add lookup method selection (renamed and reordered as requested)
+if app_mode in ["Car Classification & License Plate", "License Plate Vehicle Details"]:
+    lookup_method = st.sidebar.radio(
+        "Vehicle Lookup Method:",
+        ["Free Service", "Paid Service"]
+    )
 
 st.sidebar.markdown("---")
 st.sidebar.title("About")
@@ -268,7 +426,7 @@ st.sidebar.info("""
     
     1. Car view classification using a ResNet18 model
     2. License plate detection using EasyOCR
-    3. Vehicle details lookup via web scraping
+    3. Vehicle details lookup via free or paid services
 """)
 
 # Add model details to sidebar
@@ -277,7 +435,7 @@ st.sidebar.markdown("""
 - **Car View Classification**: ResNet18 (pretrained)
 - **OCR Engine**: EasyOCR
 - **Classes**: Back, Front, Side
-- **Vehicle Data Source**: CarInfo App
+- **Vehicle Data Source**: Free/Paid API Services
 """)
 
 # System status in sidebar
@@ -290,11 +448,33 @@ st.sidebar.success("✅ Vehicle Lookup Service: Ready")
 st.sidebar.markdown("---")
 st.sidebar.warning("""
 **Disclaimer**: This application is for demonstration purposes only. 
-The vehicle lookup feature uses web scraping which may not always be reliable.
+The vehicle lookup feature may not always return accurate results.
 """)
 
-# Streamlit UI for main content
-if app_mode == "Car Classification & License Plate":
+# License Plate Vehicle Details Mode (formerly Direct Vehicle Lookup)
+if app_mode == "License Plate Vehicle Details":
+    st.markdown("<h1 style='text-align: center'>🔍 License Plate Vehicle Details</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; padding-bottom: 10px;'>Enter a license plate number to look up vehicle details</p>", unsafe_allow_html=True)
+    
+    with st.form("license_plate_lookup_form"):
+        license_plate = st.text_input("Enter License Plate Number:", placeholder="Format: GJAABBCCCC").strip().upper()
+        submit_button = st.form_submit_button("Look Up Vehicle")
+    
+    if submit_button and license_plate:
+        st.markdown("<div class='results-section'>", unsafe_allow_html=True)
+        st.markdown(f"<h2>Vehicle Lookup for {license_plate}</h2>", unsafe_allow_html=True)
+        
+        # Call appropriate lookup method based on user selection
+        if lookup_method == "Paid Service":
+            vehicle_data = get_vehicle_details_paid(license_plate)
+        else:
+            vehicle_data = get_vehicle_details_free(license_plate)
+        
+        display_vehicle_details(vehicle_data)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# Car Classification & License Plate Mode
+elif app_mode == "Car Classification & License Plate":
     st.markdown("<h1 style='text-align: center'>🚗 Car Classification & License Plate Detection</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; padding-bottom: 10px;'>Upload an image of a car to analyze</p>", unsafe_allow_html=True)
     
@@ -304,8 +484,32 @@ if app_mode == "Car Classification & License Plate":
     st.markdown("</div>", unsafe_allow_html=True)
     
     if uploaded_file is not None:
+        # Create a session state to track processing steps
+        if 'processing_state' not in st.session_state:
+            st.session_state.processing_state = {
+                'image_loaded': False,
+                'car_classified': False,
+                'license_detected': False,
+                'license_processed': False,
+                'vehicle_details': False,
+                'corrected_plate': None
+            }
+        
+        # Reset state for new image
+        if 'current_file' not in st.session_state or st.session_state.current_file != uploaded_file.name:
+            st.session_state.current_file = uploaded_file.name
+            st.session_state.processing_state = {
+                'image_loaded': False,
+                'car_classified': False,
+                'license_detected': False,
+                'license_processed': False,
+                'vehicle_details': False,
+                'corrected_plate': None
+            }
+        
         # Process single image for license plate detection
         image = Image.open(uploaded_file)
+        st.session_state.processing_state['image_loaded'] = True
         
         # Calculate new dimensions (max height 300px while maintaining aspect ratio)
         max_height = 300
@@ -323,21 +527,47 @@ if app_mode == "Car Classification & License Plate":
         st.image(display_image, caption="Uploaded Image", use_container_width=False)
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # Process image with combined analysis
-        with st.spinner("Processing image..."):
+        # Show processing steps
+        st.markdown("<div class='results-section'>", unsafe_allow_html=True)
+        st.markdown("<h2>Processing Pipeline</h2>", unsafe_allow_html=True)
+        
+        st.markdown("<div class='processing-steps'>", unsafe_allow_html=True)
+        
+        # Step 1: Image Loaded
+        st.markdown(
+            f"<div class='step'><div class='step-number'>1</div>Image Loaded "
+            f"<span class='step-complete'>✓ Complete</span></div>", 
+            unsafe_allow_html=True
+        )
+        
+        # Process steps sequentially
+        # Step 2: Car Classification
+        with st.spinner("Classifying car view..."):
             # Load model and perform prediction
             model, device = load_model()
             predicted_class = predict_car_view(image, model, device)
+            st.session_state.processing_state['car_classified'] = True
             
-            # Display car view classification results
-            st.markdown("<div class='results-section'>", unsafe_allow_html=True)
-            st.markdown(f"<h2>Analysis Results</h2>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='step'><div class='step-number'>2</div>Car Classification "
+                f"<span class='step-complete'>✓ Complete</span></div>", 
+                unsafe_allow_html=True
+            )
+            
             st.success(f"Predicted car view: **{predicted_class.upper()}**")
-            st.markdown("</div>", unsafe_allow_html=True)
-            
+        
+        # Step 3: License Plate Detection
+        with st.spinner("Detecting license plate..."):
             # Load OCR reader and perform detection
             reader = load_ocr_reader()
             img_with_detections, best_plate = detect_license_plate(image, reader)
+            st.session_state.processing_state['license_detected'] = True
+            
+            st.markdown(
+                f"<div class='step'><div class='step-number'>3</div>License Plate Detection "
+                f"<span class='step-complete'>✓ Complete</span></div>", 
+                unsafe_allow_html=True
+            )
             
             # Resize detection image for display
             height, width = img_with_detections.shape[:2]
@@ -348,55 +578,88 @@ if app_mode == "Car Classification & License Plate":
                 img_with_detections = cv2.resize(img_with_detections, (new_width, new_height), interpolation=cv2.INTER_AREA)
             
             # Display image with detections
-            st.markdown("<div class='results-section'>", unsafe_allow_html=True)
-            st.markdown("<h2>License Plate Detection</h2>", unsafe_allow_html=True)
             st.image(img_with_detections, caption="Detected License Plate", use_container_width=False)
-            st.markdown("</div>", unsafe_allow_html=True)
-            
-            # Process best plate
+        
+        # Step 4: License Plate Processing
+        with st.spinner("Processing license plate..."):
             if best_plate:
                 # Split and correct the plate
                 part1, part2, part3, part4 = strict_split_number_plate(best_plate)
                 
                 if part1 and part2 and part3 and part4:
                     corrected_plate = part1 + part2 + part3 + part4
+                    st.session_state.processing_state['license_processed'] = True
+                    st.session_state.processing_state['corrected_plate'] = corrected_plate
                     
-                    # Display corrected plate
-                    st.markdown("<div class='results-section'>", unsafe_allow_html=True)
-                    st.markdown("<h2>License Plate</h2>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='step'><div class='step-number'>4</div>License Plate Processing "
+                        f"<span class='step-complete'>✓ Complete</span></div>", 
+                        unsafe_allow_html=True
+                    )
+                    
                     st.success(f"Corrected License Plate: **{corrected_plate}**")
-                    
-                    # Automatically look up vehicle details
-                    vehicle_details = get_vehicle_details(corrected_plate)
-                    
-                    if vehicle_details:
-                        # Display vehicle details
-                        st.markdown("<h2>Vehicle Details</h2>", unsafe_allow_html=True)
-                        
-                        # Create two columns for details display
-                        detail_col1, detail_col2 = st.columns(2)
-                        
-                        with detail_col1:
-                            st.markdown("<h3>Vehicle Information</h3>", unsafe_allow_html=True)
-                            st.write(f"**Make & Model:** {vehicle_details['Make & Model']}")
-                            st.write(f"**Owner Name:** {vehicle_details['Owner Name']}")
-                        
-                        with detail_col2:
-                            st.markdown("<h3>RTO Information</h3>", unsafe_allow_html=True)
-                            st.write(f"**RTO Number:** {vehicle_details['RTO Number']}")
-                            st.write(f"**State:** {vehicle_details['State']}")
-                            st.write(f"**RTO Phone:** {vehicle_details['RTO Phone']}")
-                    else:
-                        st.error("Could not retrieve vehicle details.")
-                    st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    st.markdown("<div class='results-section'>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='step'><div class='step-number'>4</div>License Plate Processing "
+                        f"<span style='color: #EF4444; font-weight: bold;'>✗ Failed</span></div>", 
+                        unsafe_allow_html=True
+                    )
                     st.warning("Could not process license plate format.")
-                    st.markdown("</div>", unsafe_allow_html=True)
             else:
-                st.markdown("<div class='results-section'>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='step'><div class='step-number'>4</div>License Plate Processing "
+                    f"<span style='color: #EF4444; font-weight: bold;'>✗ Failed</span></div>", 
+                    unsafe_allow_html=True
+                )
                 st.warning("No license plates detected in the image.")
-                st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Step 5: Vehicle Details Lookup
+        if st.session_state.processing_state['license_processed'] and st.session_state.processing_state['corrected_plate']:
+            with st.spinner("Looking up vehicle details..."):
+                st.markdown(
+                    f"<div class='step'><div class='step-number'>5</div>Vehicle Details Lookup "
+                    f"<span class='step-running'>⟳ Running...</span></div>", 
+                    unsafe_allow_html=True
+                )
+                
+                # Use the corrected plate from license plate processing
+                corrected_plate = st.session_state.processing_state['corrected_plate']
+                
+                # Call appropriate lookup method based on user selection
+                if lookup_method == "Paid Service":
+                    vehicle_data = get_vehicle_details_paid(corrected_plate)
+                else:
+                    vehicle_data = get_vehicle_details_free(corrected_plate)
+                
+                if vehicle_data:
+                    st.session_state.processing_state['vehicle_details'] = True
+                    st.markdown(
+                        f"<div class='step'><div class='step-number'>5</div>Vehicle Details Lookup "
+                        f"<span class='step-complete'>✓ Complete</span></div>", 
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        f"<div class='step'><div class='step-number'>5</div>Vehicle Details Lookup "
+                        f"<span style='color: #EF4444; font-weight: bold;'>✗ Failed</span></div>", 
+                        unsafe_allow_html=True
+                    )
+        else:
+            st.markdown(
+                f"<div class='step'><div class='step-number'>5</div>Vehicle Details Lookup "
+                f"<span style='color: #9CA3AF; font-weight: bold;'>⦻ Skipped</span></div>", 
+                unsafe_allow_html=True
+            )
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Display vehicle details if available
+        if st.session_state.processing_state['vehicle_details']:
+            st.markdown("<div class='results-section'>", unsafe_allow_html=True)
+            st.markdown("<h2>Vehicle Details</h2>", unsafe_allow_html=True)
+            display_vehicle_details(vehicle_data)
+            st.markdown("</div>", unsafe_allow_html=True)
 
 else:
     # Car Classification Only mode with multiple image support
@@ -419,39 +682,3 @@ else:
             # Calculate new dimensions (max height 300px while maintaining aspect ratio)
             max_height = 300
             width, height = image.size
-            if height > max_height:
-                ratio = max_height / height
-                new_width = int(width * ratio)
-                new_height = max_height
-                display_image = image.resize((new_width, new_height), Image.LANCZOS)
-            else:
-                display_image = image
-                
-            # Create a container for results
-            st.markdown("<div class='results-section'>", unsafe_allow_html=True)
-            
-            # Create two columns for image and results
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                st.image(display_image, caption=f"Image {i+1}", use_container_width=True)
-                
-            with col2:
-                with st.spinner(f"Classifying image {i+1}..."):
-                    # Perform prediction
-                    predicted_class = predict_car_view(image, model, device)
-                    st.markdown(f"<h3>Image {i+1} Results</h3>", unsafe_allow_html=True)
-                    st.success(f"Predicted car view: **{predicted_class.upper()}**")
-                    
-                    # Add confidence levels (for demonstration)
-                    if predicted_class == "front":
-                        st.progress(0.85)
-                        st.write("Confidence: 85%")
-                    elif predicted_class == "back":
-                        st.progress(0.78)
-                        st.write("Confidence: 78%")
-                    else:
-                        st.progress(0.92)
-                        st.write("Confidence: 92%")
-                        
-            st.markdown("</div>", unsafe_allow_html=True)
