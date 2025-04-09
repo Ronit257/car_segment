@@ -479,7 +479,7 @@ elif app_mode == "Car Classification & License Plate":
     st.markdown("<p style='text-align: center; padding-bottom: 10px;'>Upload an image of a car to analyze</p>", unsafe_allow_html=True)
     
     # Create a responsive container for the upload section
-    st.markdown("<div class='upload-section'>", unsafe_allow_html=True)
+    # st.markdown("<div class='upload-section'>", unsafe_allow_html=True)
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
     st.markdown("</div>", unsafe_allow_html=True)
     
@@ -667,7 +667,7 @@ else:
     st.markdown("<p style='text-align: center; padding-bottom: 10px;'>Upload multiple car images to classify</p>", unsafe_allow_html=True)
     
     # Create a responsive container for the upload section
-    st.markdown("<div class='upload-section'>", unsafe_allow_html=True)
+    # st.markdown("<div class='upload-section'>", unsafe_allow_html=True)
     uploaded_files = st.file_uploader("Choose images...", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     st.markdown("</div>", unsafe_allow_html=True)
     
